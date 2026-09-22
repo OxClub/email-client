@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Cleartext traffic is disabled app-wide; all IMAP/SMTP connections
+         must use SSL/TLS or STARTTLS. -->
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>
