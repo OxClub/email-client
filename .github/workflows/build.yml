@@ -20,10 +20,12 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # This project doesn't check in the Gradle wrapper jar (it's a binary
-      # file), so we install Gradle directly instead of calling ./gradlew.
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # ubuntu-latest runners already ship with the Android SDK preinstalled
+      # (ANDROID_HOME / ANDROID_SDK_ROOT are set), so no separate SDK
+      # install step is needed. We also skip ./gradlew since this repo
+      # doesn't check in the wrapper's binary jar file.
+      - name: Accept Android SDK licenses
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null || true
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -54,8 +56,8 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Accept Android SDK licenses
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null || true
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
