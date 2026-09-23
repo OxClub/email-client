@@ -30,6 +30,7 @@ import com.example.emailclient.data.ProviderPresets
 fun LoginScreen(
     busy: Boolean,
     onAddAccount: (Account, String, (Result<Unit>) -> Unit) -> Unit,
+    onGoogleSignIn: () -> Unit,
     onDone: () -> Unit
 ) {
     var displayName by remember { mutableStateOf("") }
@@ -71,6 +72,26 @@ fun LoginScreen(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+        Spacer(Modifier.height(20.dp))
+
+        OutlinedButton(
+            onClick = onGoogleSignIn,
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth().height(48.dp)
+        ) {
+            Text("Continue with Google")
+        }
+
+        Spacer(Modifier.height(20.dp))
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Divider(Modifier.weight(1f))
+            Text(
+                "  or use email + password  ",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Divider(Modifier.weight(1f))
+        }
         Spacer(Modifier.height(20.dp))
 
         OutlinedTextField(

@@ -5,7 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [Account::class, EmailMessage::class], version = 1, exportSchema = false)
+@Database(entities = [Account::class, EmailMessage::class], version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun accountDao(): AccountDao
     abstract fun messageDao(): MessageDao
@@ -19,7 +19,12 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "email_client.db"
-                ).build().also { instance = it }
+                )
+                    // App is still pre-release; destructive migration is fine
+                    // for now instead of hand-writing Migration objects for
+                    // every schema tweak during active development.
+                    .fallbackToDestructiveMigration()
+                    .build().also { instance = it }
             }
     }
 }

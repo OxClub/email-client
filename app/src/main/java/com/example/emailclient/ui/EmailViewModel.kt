@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.emailclient.data.Account
+import com.example.emailclient.data.AuthType
 import com.example.emailclient.data.EmailMessage
 import com.example.emailclient.data.EmailRepository
 import kotlinx.coroutines.flow.*
@@ -75,6 +76,28 @@ class EmailViewModel(app: Application) : AndroidViewModel(app) {
             }
             _loginBusy.value = false
             onResult(test)
+        }
+    }
+
+    /** Called after a successful Google OAuth sign-in with the resulting AuthState JSON + email. */
+    fun addGoogleAccount(emailAddress: String, authStateJson: String, onResult: (Result<Unit>) -> Unit) {
+        viewModelScope.launch {
+            _loginBusy.value = true
+            val account = Account(
+                displayName = emailAddress,
+                emailAddress = emailAddress,
+                imapHost = "imap.gmail.com",
+                imapPort = 993,
+                smtpHost = "smtp.gmail.com",
+                smtpPort = 587,
+                username = emailAddress,
+                authType = AuthType.GOOGLE_OAUTH
+            )
+            val id = repo.addGoogleOAuthAccount(account, authStateJson)
+            _selectedAccountId.value = id
+            syncSelected()
+            _loginBusy.value = false
+            onResult(Result.success(Unit))
         }
     }
 

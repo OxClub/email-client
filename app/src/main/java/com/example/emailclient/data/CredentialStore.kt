@@ -32,4 +32,18 @@ class CredentialStore(context: Context) {
     fun clearPassword(accountId: Long) {
         prefs.edit().remove("pwd_$accountId").apply()
     }
+
+    // --- Google OAuth state (net.openid.appauth.AuthState, serialized to JSON) ---
+    // Holds the refresh token + latest access token, so we can silently get
+    // a fresh access token later without asking the user to sign in again.
+
+    fun saveAuthState(accountId: Long, authStateJson: String) {
+        prefs.edit().putString("oauth_$accountId", authStateJson).apply()
+    }
+
+    fun getAuthState(accountId: Long): String? = prefs.getString("oauth_$accountId", null)
+
+    fun clearAuthState(accountId: Long) {
+        prefs.edit().remove("oauth_$accountId").apply()
+    }
 }

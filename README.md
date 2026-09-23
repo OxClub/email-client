@@ -5,9 +5,14 @@ Gmail, Outlook, Yahoo, iCloud, or any generic provider.
 
 ## What it does
 
-- **Add account** — pick a provider preset (or enter custom IMAP/SMTP hosts),
-  sign in with email + password/app password. Credentials are verified live
-  against the server before saving.
+- **Continue with Google** — real OAuth2 sign-in for Gmail accounts via
+  AppAuth: taps into the actual Google consent screen, exchanges the
+  authorization code for tokens, and stores the refresh token securely.
+  Access tokens are silently refreshed as needed (no re-login prompts) and
+  IMAP/SMTP authenticate via SASL XOAUTH2 instead of a password.
+- **Add account (password)** — still available as a fallback / for non-Google
+  providers: pick a provider preset (or enter custom IMAP/SMTP hosts), sign
+  in with email + password/app password.
 - **Inbox** — syncs the most recent messages over IMAP, shows sender, subject,
   preview, date, read/unread state, star/flag.
 - **Read a message** — fetches the full body (plain text, with HTML fallback)
@@ -24,11 +29,30 @@ Gmail, Outlook, Yahoo, iCloud, or any generic provider.
 - **data/**: Room entities (`Account`, `EmailMessage`), DAOs, and
   `EmailRepository`, which is the single source of truth the UI talks to.
 - **network/MailService.kt**: all actual IMAP/SMTP calls, built on
-  `com.sun.mail:android-mail` (JavaMail ported for Android). This is the file
-  to look at if you want to change sync behavior, add folder support beyond
-  INBOX, etc.
-- **Credentials**: stored in `EncryptedSharedPreferences`
-  (`CredentialStore.kt`), never in the Room database, never in plaintext.
+  `com.sun.mail:android-mail` (JavaMail ported for Android). Supports both
+  password auth and OAuth2 (SASL XOAUTH2).
+- **oauth/GoogleAuthManager.kt**: the AppAuth-based Google sign-in flow —
+  builds the consent-screen intent, exchanges the auth code for tokens, and
+  refreshes access tokens transparently via the stored refresh token.
+- **Credentials**: passwords and OAuth refresh tokens are both stored in
+  `EncryptedSharedPreferences` (`CredentialStore.kt`), never in the Room
+  database, never in plaintext.
+
+## Google OAuth Client ID
+
+`GoogleAuthManager.kt` has the Android OAuth Client ID hardcoded
+(`CLIENT_ID`). It's tied to this app's package name (`com.example.emailclient`)
+and the signing certificate's SHA-1 fingerprint — if you change either of
+those, you'll need to register a new OAuth client in Google Cloud Console
+(APIs & Services → Credentials) and update `CLIENT_ID` to match.
+
+While the OAuth consent screen is in "Testing" status (the default until you
+submit for verification), only Google accounts added as test users in Cloud
+Console → Audience can complete sign-in — everyone else sees an
+"access blocked" screen. Submitting for verification is free but requires a
+review process (and, since this requests the full-access
+`https://mail.google.com/` scope, an annual third-party security
+assessment) before it's open to the public.
 
 ## Setup
 
@@ -104,9 +128,6 @@ passwords work if 2FA is off and IMAP is enabled on the account.
 - Only the `INBOX` folder is synced in this version — `MailService.listFolders()`
   already exists, so wiring up a folder switcher (Sent, Drafts, etc.) is a
   small addition in `InboxScreen` + `EmailViewModel`.
-- No OAuth2 ("Sign in with Google" button) — would require registering an
-  OAuth client in Google Cloud Console and adding a browser-based consent
-  flow (AppAuth library is the usual choice).
 - No push notifications for new mail — sync is manual (pull-to-refresh /
   refresh button) or would need IMAP IDLE + a foreground service, or
   WorkManager periodic sync (the dependency is already included but not
@@ -115,6 +136,21 @@ passwords work if 2FA is off and IMAP is enabled on the account.
   text/plain and text/html parts.
 - Error states are minimal (messages are logged to a StateFlow but not shown
   as a Snackbar yet — hook `errorMessage` up in `MainActivity.kt`).
+
+## OAuth setup notes
+
+This repo includes `keystore/debug.keystore` — a fixed, non-secret debug
+signing key (checked into the repo on purpose, unlike a real release
+keystore). The debug build type in `app/build.gradle.kts` is pinned to use
+it, so every build — locally or in GitHub Actions — is signed with the same
+key. That means its SHA-1 fingerprint never changes, which is required for
+registering an Android OAuth Client ID in Google Cloud Console.
+
+**Debug keystore SHA-1**: `5B:0C:BC:BF:0B:25:5B:41:46:B2:99:8E:51:7F:66:CC:9F:05:9A:A3`
+
+Use that value (and package name `com.example.emailclient`) when creating
+the Android OAuth Client ID in Google Cloud Console → APIs & Services →
+Credentials.
 
 ## Permissions
 

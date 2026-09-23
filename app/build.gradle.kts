@@ -8,15 +8,32 @@ android {
     namespace = "com.example.emailclient"
     compileSdk = 34
 
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("../keystore/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     defaultConfig {
         applicationId = "com.example.emailclient"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
+        // Required by the AppAuth library: it generates a redirect-receiving
+        // activity in its own manifest using this placeholder, so the
+        // OAuth browser flow can hand control back to the app via
+        // com.example.emailclient:/oauth2redirect
+        manifestPlaceholders["appAuthRedirectScheme"] = "com.example.emailclient"
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
@@ -42,7 +59,6 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
             excludes += "META-INF/LICENSE*"
-            excludes += "META-INF/NOTICE*"
         }
     }
 }
@@ -58,7 +74,6 @@ dependencies {
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.navigation:navigation-compose:2.7.7")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
@@ -73,6 +88,10 @@ dependencies {
     // JavaMail for Android (IMAP + SMTP client)
     implementation("com.sun.mail:android-mail:1.6.7")
     implementation("com.sun.mail:android-activation:1.6.7")
+
+    // OAuth2 ("Sign in with Google") for Gmail accounts
+    implementation("net.openid:appauth:0.11.1")
+    implementation("androidx.browser:browser:1.8.0")
 
     // WorkManager for periodic background sync
     implementation("androidx.work:work-runtime-ktx:2.9.1")

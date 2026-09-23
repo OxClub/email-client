@@ -11,17 +11,23 @@ import javax.mail.internet.MimeMessage
 import javax.mail.internet.MimeMultipart
 
 /**
- * Thin wrapper around JavaMail for connecting to a generic IMAP/SMTP account.
+ * Thin wrapper around JavaMail for connecting to an IMAP/SMTP account.
  * All calls are blocking JavaMail calls, so every entry point here switches
  * to Dispatchers.IO.
  *
- * Auth model: username + password (an "app password" for providers like
- * Gmail/Yahoo/iCloud that require one when 2FA is on, or a normal password
- * for providers that allow plain IMAP login). Full OAuth2 (e.g. "Sign in
- * with Google") is intentionally out of scope here — it requires registering
- * this app with the provider and handling a browser-based consent flow.
+ * Auth model: either a plain password / app password, OR (for Gmail
+ * accounts signed in via "Continue with Google") an OAuth2 access token,
+ * passed in as [credential] either way — [isOAuth] tells this class which
+ * SASL mechanism to configure. For OAuth, the caller (EmailRepository) is
+ * responsible for fetching a *fresh* access token before constructing this
+ * class, since tokens expire in ~1 hour and this class does not refresh
+ * them itself.
  */
-class MailService(private val account: Account, private val password: String) {
+class MailService(
+    private val account: Account,
+    private val credential: String,
+    private val isOAuth: Boolean = false
+) {
 
     private fun imapSession(): Session {
         val props = Properties().apply {
@@ -31,6 +37,12 @@ class MailService(private val account: Account, private val password: String) {
             put("mail.imaps.ssl.enable", "true")
             put("mail.imaps.connectiontimeout", "15000")
             put("mail.imaps.timeout", "15000")
+            if (isOAuth) {
+                put("mail.imaps.sasl.enable", "true")
+                put("mail.imaps.sasl.mechanisms", "XOAUTH2")
+                put("mail.imaps.auth.login.disable", "true")
+                put("mail.imaps.auth.plain.disable", "true")
+            }
         }
         return Session.getInstance(props)
     }
@@ -44,10 +56,16 @@ class MailService(private val account: Account, private val password: String) {
             put("mail.smtp.ssl.trust", account.smtpHost)
             put("mail.smtp.connectiontimeout", "15000")
             put("mail.smtp.timeout", "15000")
+            if (isOAuth) {
+                put("mail.smtp.sasl.enable", "true")
+                put("mail.smtp.sasl.mechanisms", "XOAUTH2")
+                put("mail.smtp.auth.login.disable", "true")
+                put("mail.smtp.auth.plain.disable", "true")
+            }
         }
         return Session.getInstance(props, object : Authenticator() {
             override fun getPasswordAuthentication() =
-                PasswordAuthentication(account.username, password)
+                PasswordAuthentication(account.username, credential)
         })
     }
 
@@ -55,7 +73,7 @@ class MailService(private val account: Account, private val password: String) {
     suspend fun testConnection(): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val store = imapSession().getStore("imaps")
-            store.connect(account.imapHost, account.imapPort, account.username, password)
+            store.connect(account.imapHost, account.imapPort, account.username, credential)
             store.close()
             Result.success(Unit)
         } catch (e: Exception) {
@@ -67,7 +85,7 @@ class MailService(private val account: Account, private val password: String) {
     suspend fun listFolders(): Result<List<String>> = withContext(Dispatchers.IO) {
         try {
             val store = imapSession().getStore("imaps")
-            store.connect(account.imapHost, account.imapPort, account.username, password)
+            store.connect(account.imapHost, account.imapPort, account.username, credential)
             val names = store.defaultFolder.list("*").map { it.fullName }
             store.close()
             Result.success(names)
@@ -89,7 +107,7 @@ class MailService(private val account: Account, private val password: String) {
     ): Result<List<EmailMessage>> = withContext(Dispatchers.IO) {
         try {
             val store = imapSession().getStore("imaps")
-            store.connect(account.imapHost, account.imapPort, account.username, password)
+            store.connect(account.imapHost, account.imapPort, account.username, credential)
             val folder = store.getFolder(folderName)
             folder.open(Folder.READ_ONLY)
             val uidFolder = folder as? com.sun.mail.imap.IMAPFolder
@@ -143,7 +161,7 @@ class MailService(private val account: Account, private val password: String) {
         withContext(Dispatchers.IO) {
             try {
                 val store = imapSession().getStore("imaps")
-                store.connect(account.imapHost, account.imapPort, account.username, password)
+                store.connect(account.imapHost, account.imapPort, account.username, credential)
                 val folder = store.getFolder(folderName) as com.sun.mail.imap.IMAPFolder
                 folder.open(Folder.READ_WRITE) // READ_WRITE so opening marks it \Seen
                 val msg = folder.getMessageByUID(uid)

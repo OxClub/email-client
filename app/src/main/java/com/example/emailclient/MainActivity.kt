@@ -1,14 +1,19 @@
 package com.example.emailclient
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import com.example.emailclient.data.EmailMessage
+import com.example.emailclient.oauth.GoogleAuthManager
 import com.example.emailclient.ui.EmailViewModel
 import com.example.emailclient.ui.INBOX
 import com.example.emailclient.ui.screens.ComposeScreen
@@ -16,6 +21,7 @@ import com.example.emailclient.ui.screens.EmailDetailScreen
 import com.example.emailclient.ui.screens.InboxScreen
 import com.example.emailclient.ui.screens.LoginScreen
 import com.example.emailclient.ui.theme.EmailClientTheme
+import kotlinx.coroutines.launch
 
 private sealed interface Screen {
     object Login : Screen
@@ -41,6 +47,9 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun AppRoot(viewModel: EmailViewModel) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
     val accounts by viewModel.accounts.collectAsState()
     val selectedAccountId by viewModel.selectedAccountId.collectAsState()
     val isSyncing by viewModel.isSyncing.collectAsState()
@@ -50,6 +59,29 @@ private fun AppRoot(viewModel: EmailViewModel) {
     var screen by remember { mutableStateOf<Screen>(Screen.Login) }
     var sending by remember { mutableStateOf(false) }
     var loadingBody by remember { mutableStateOf(false) }
+    var googleSignInError by remember { mutableStateOf<String?>(null) }
+
+    // Handles the result of the Google sign-in browser screen: exchanges
+    // the returned authorization code for tokens, then saves the account.
+    val googleSignInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val data = result.data
+        if (data == null) {
+            googleSignInError = "Sign-in was cancelled"
+            return@rememberLauncherForActivityResult
+        }
+        coroutineScope.launch {
+            val outcome = GoogleAuthManager.handleSignInResult(context, data)
+            outcome.onSuccess { (authStateJson, email) ->
+                viewModel.addGoogleAccount(email, authStateJson) { addResult ->
+                    addResult.onSuccess { screen = Screen.Inbox }
+                    addResult.onFailure { googleSignInError = it.message ?: "Couldn't add account" }
+                }
+            }
+            outcome.onFailure { googleSignInError = it.message ?: "Google sign-in failed" }
+        }
+    }
 
     // Once an account exists, default to Inbox.
     LaunchedEffect(accounts) {
@@ -71,6 +103,10 @@ private fun AppRoot(viewModel: EmailViewModel) {
         is Screen.Login -> LoginScreen(
             busy = loginBusy,
             onAddAccount = { account, password, callback -> viewModel.addAccount(account, password, callback) },
+            onGoogleSignIn = {
+                googleSignInError = null
+                googleSignInLauncher.launch(GoogleAuthManager.buildSignInIntent(context))
+            },
             onDone = { screen = Screen.Inbox }
         )
 

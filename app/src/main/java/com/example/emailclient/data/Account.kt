@@ -3,10 +3,17 @@ package com.example.emailclient.data
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
+/** How an account authenticates: a stored password/app-password, or Google OAuth. */
+object AuthType {
+    const val PASSWORD = "PASSWORD"
+    const val GOOGLE_OAUTH = "GOOGLE_OAUTH"
+}
+
 /**
- * A configured mail account. The password itself is NOT stored in this row —
- * it lives in EncryptedSharedPreferences (see CredentialStore). This table
- * only holds connection settings needed to reconnect.
+ * A configured mail account. The password (or OAuth tokens) themselves are
+ * NOT stored in this row — they live in EncryptedSharedPreferences (see
+ * CredentialStore). This table only holds connection settings needed to
+ * reconnect.
  */
 @Entity(tableName = "accounts")
 data class Account(
@@ -18,7 +25,8 @@ data class Account(
     val smtpHost: String,
     val smtpPort: Int = 587,
     val username: String, // usually same as emailAddress, but some providers differ
-    val useSsl: Boolean = true
+    val useSsl: Boolean = true,
+    val authType: String = AuthType.PASSWORD
 )
 
 /** Well-known provider presets so users don't have to hunt for server settings. */

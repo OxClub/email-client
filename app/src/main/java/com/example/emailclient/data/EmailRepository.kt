@@ -2,9 +2,10 @@ package com.example.emailclient.data
 
 import android.content.Context
 import com.example.emailclient.network.MailService
+import com.example.emailclient.oauth.GoogleAuthManager
 import kotlinx.coroutines.flow.Flow
 
-class EmailRepository(context: Context) {
+class EmailRepository(private val context: Context) {
     private val db = AppDatabase.get(context)
     private val credentials = CredentialStore(context)
     private val accountDao = db.accountDao()
@@ -21,19 +22,40 @@ class EmailRepository(context: Context) {
         return id
     }
 
+    /** Adds an account that authenticates via Google OAuth (no password stored). */
+    suspend fun addGoogleOAuthAccount(account: Account, authStateJson: String): Long {
+        val id = accountDao.insert(account)
+        credentials.saveAuthState(id, authStateJson)
+        return id
+    }
+
     suspend fun removeAccount(account: Account) {
         credentials.clearPassword(account.id)
+        credentials.clearAuthState(account.id)
         messageDao.clearAccount(account.id)
         accountDao.delete(account)
     }
 
+    /**
+     * Builds a MailService for this account, fetching a fresh OAuth access
+     * token (and persisting the refreshed state) if the account uses Google
+     * sign-in, or the stored password otherwise.
+     */
     private suspend fun serviceFor(account: Account): MailService? {
-        val pwd = credentials.getPassword(account.id) ?: return null
-        return MailService(account, pwd)
+        return if (account.authType == AuthType.GOOGLE_OAUTH) {
+            val authStateJson = credentials.getAuthState(account.id) ?: return null
+            val result = GoogleAuthManager.getFreshAccessToken(context, authStateJson)
+            val (accessToken, updatedAuthStateJson) = result.getOrNull() ?: return null
+            credentials.saveAuthState(account.id, updatedAuthStateJson) // persist refreshed token
+            MailService(account, accessToken, isOAuth = true)
+        } else {
+            val pwd = credentials.getPassword(account.id) ?: return null
+            MailService(account, pwd, isOAuth = false)
+        }
     }
 
     suspend fun testLogin(account: Account, password: String): Result<Unit> =
-        MailService(account, password).testConnection()
+        MailService(account, password, isOAuth = false).testConnection()
 
     /** Pulls any messages newer than what we already have cached, for one folder. */
     suspend fun syncFolder(account: Account, folder: String): Result<Int> {
