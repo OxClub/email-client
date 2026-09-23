@@ -9,7 +9,6 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -18,6 +17,14 @@ import androidx.compose.ui.unit.dp
 import com.example.emailclient.data.Account
 import com.example.emailclient.data.ProviderPresets
 
+/**
+ * Sign-in screen. Only asks for name, email, and password — IMAP/SMTP host
+ * and port are looked up automatically from the email domain
+ * (ProviderPresets.forEmail / guessFromDomain), so there's no server
+ * settings step for the common case. An "Advanced" section is still
+ * available, collapsed by default, for the rare case where the auto-guess
+ * is wrong (e.g. a company mail server on a nonstandard hostname).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(
@@ -25,18 +32,31 @@ fun LoginScreen(
     onAddAccount: (Account, String, (Result<Unit>) -> Unit) -> Unit,
     onDone: () -> Unit
 ) {
-    var selectedPreset by remember { mutableStateOf(ProviderPresets.presets.first()) }
     var displayName by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
-    var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var imapHost by remember { mutableStateOf(selectedPreset.imapHost) }
-    var imapPort by remember { mutableStateOf(selectedPreset.imapPort.toString()) }
-    var smtpHost by remember { mutableStateOf(selectedPreset.smtpHost) }
-    var smtpPort by remember { mutableStateOf(selectedPreset.smtpPort.toString()) }
     var showPassword by remember { mutableStateOf(false) }
     var errorText by remember { mutableStateOf<String?>(null) }
-    var menuExpanded by remember { mutableStateOf(false) }
+    var advancedExpanded by remember { mutableStateOf(false) }
+
+    // Auto-detected (or guessed) server settings, recalculated whenever the
+    // email address changes. Shown read-only unless the user expands
+    // "Advanced" to override them.
+    var imapHost by remember { mutableStateOf("") }
+    var imapPort by remember { mutableStateOf("993") }
+    var smtpHost by remember { mutableStateOf("") }
+    var smtpPort by remember { mutableStateOf("587") }
+    var userEditedServerSettings by remember { mutableStateOf(false) }
+
+    LaunchedEffect(email) {
+        if (!userEditedServerSettings && email.contains("@")) {
+            val preset = ProviderPresets.forEmail(email) ?: ProviderPresets.guessFromDomain(email)
+            imapHost = preset.imapHost
+            imapPort = preset.imapPort.toString()
+            smtpHost = preset.smtpHost
+            smtpPort = preset.smtpPort.toString()
+        }
+    }
 
     Column(
         Modifier
@@ -53,33 +73,14 @@ fun LoginScreen(
         )
         Spacer(Modifier.height(20.dp))
 
-        ExposedDropdownMenuBox(expanded = menuExpanded, onExpandedChange = { menuExpanded = it }) {
-            OutlinedTextField(
-                value = selectedPreset.label,
-                onValueChange = {},
-                readOnly = true,
-                label = { Text("Provider") },
-                modifier = Modifier.menuAnchor().fillMaxWidth()
-            )
-            ExposedDropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                ProviderPresets.presets.forEach { preset ->
-                    DropdownMenuItem(text = { Text(preset.label) }, onClick = {
-                        selectedPreset = preset
-                        imapHost = preset.imapHost
-                        imapPort = preset.imapPort.toString()
-                        smtpHost = preset.smtpHost
-                        smtpPort = preset.smtpPort.toString()
-                        menuExpanded = false
-                    })
-                }
-            }
-        }
-
-        Spacer(Modifier.height(12.dp))
-        OutlinedTextField(displayName, { displayName = it }, label = { Text("Your name") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(
+            displayName, { displayName = it },
+            label = { Text("Your name") },
+            modifier = Modifier.fillMaxWidth()
+        )
         Spacer(Modifier.height(12.dp))
         OutlinedTextField(
-            email, { email = it; if (username.isBlank()) username = it },
+            email, { email = it },
             label = { Text("Email address") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
             modifier = Modifier.fillMaxWidth()
@@ -97,27 +98,42 @@ fun LoginScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
-        Spacer(Modifier.height(20.dp))
-        Text("Server settings", style = MaterialTheme.typography.titleSmall)
-        Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(imapHost, { imapHost = it }, label = { Text("IMAP host") }, modifier = Modifier.weight(2f))
-            OutlinedTextField(
-                imapPort, { imapPort = it.filter(Char::isDigit) },
-                label = { Text("Port") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.weight(1f)
-            )
+        Spacer(Modifier.height(12.dp))
+        TextButton(onClick = { advancedExpanded = !advancedExpanded }) {
+            Text(if (advancedExpanded) "Hide advanced settings" else "Advanced (server settings)")
         }
-        Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(smtpHost, { smtpHost = it }, label = { Text("SMTP host") }, modifier = Modifier.weight(2f))
-            OutlinedTextField(
-                smtpPort, { smtpPort = it.filter(Char::isDigit) },
-                label = { Text("Port") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.weight(1f)
+        if (advancedExpanded) {
+            Text(
+                "Auto-filled from your email address. Only change these if sign-in fails and you know your provider's server details.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    imapHost, { imapHost = it; userEditedServerSettings = true },
+                    label = { Text("IMAP host") }, modifier = Modifier.weight(2f)
+                )
+                OutlinedTextField(
+                    imapPort, { imapPort = it.filter(Char::isDigit); userEditedServerSettings = true },
+                    label = { Text("Port") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    smtpHost, { smtpHost = it; userEditedServerSettings = true },
+                    label = { Text("SMTP host") }, modifier = Modifier.weight(2f)
+                )
+                OutlinedTextField(
+                    smtpPort, { smtpPort = it.filter(Char::isDigit); userEditedServerSettings = true },
+                    label = { Text("Port") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
 
         errorText?.let {
@@ -137,7 +153,7 @@ fun LoginScreen(
                     imapPort = imapPort.toIntOrNull() ?: 993,
                     smtpHost = smtpHost,
                     smtpPort = smtpPort.toIntOrNull() ?: 587,
-                    username = username.ifBlank { email }
+                    username = email
                 )
                 onAddAccount(account, password) { result ->
                     result.onSuccess { onDone() }
